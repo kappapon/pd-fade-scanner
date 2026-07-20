@@ -90,7 +90,8 @@ const FLAG_DESC = {
 const fmt = x => x==null ? '-' : Number(x).toPrecision(6).replace(/\.?0+$/,'');
 const metaBase =
   `${DATA.generated_utc} | universe ${DATA.universe} | candidates ${DATA.results.length}` +
-  ` | pump≥${(DATA.params.pump_min*100).toFixed(0)}% anchor ${DATA.params.anchor_hi_lb}D SL+${(DATA.params.sl_buffer*100).toFixed(0)}%`;
+  ` | pump≥${(DATA.params.pump_min*100).toFixed(0)}% anchor ${DATA.params.anchor_hi_lb}D SL+${(DATA.params.sl_buffer*100).toFixed(0)}%` +
+  (location.protocol.startsWith('http') ? ' | 🔄 auto 5m' : '');
 document.getElementById('meta').textContent = metaBase;
 const tb = document.getElementById('tb');
 const rowRefs = [];
@@ -210,6 +211,29 @@ const btn = document.getElementById('rescan');
     started=true; setTimeout(pollScan,2000);
   };
   pollScan();  // เผื่อมี scan ค้างอยู่ตอนเปิดหน้า
+})();
+
+/* ---------- Auto-refresh (แบบ A: เช็ค generated_utc ก่อนค่อยรีโหลด) ---------- */
+(function(){
+  if(!location.protocol.startsWith('http')) return;   // เปิดเป็นไฟล์ file:// — ข้าม
+  const INTERVAL = 5*60*1000;                          // เช็คทุก 5 นาที
+  const CURRENT  = DATA.generated_utc;
+  let timer = null;
+
+  async function check(){
+    if(document.hidden){ schedule(); return; }          // แท็บพับอยู่ — ไม่ยิงเน็ต ประหยัดเน็ต/แบต
+    try{
+      const res  = await fetch(location.pathname + '?_=' + Date.now(), {cache:'no-store'});  // cache-busting
+      const html = await res.text();
+      const m = html.match(/"generated_utc":\s*"([^"]+)"/);
+      if(m && m[1] !== CURRENT){ location.reload(); return; }   // มีข้อมูลใหม่ → โหลดหน้าใหม่
+    }catch(e){ /* ออฟไลน์ชั่วคราว — รอรอบหน้า */ }
+    schedule();                                          // ข้อมูลเดิม — ไม่รีโหลด (ไม่กระพริบ)
+  }
+  function schedule(){ clearTimeout(timer); timer = setTimeout(check, INTERVAL); }
+
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden){ clearTimeout(timer); check(); }});  // กลับมาดู → เช็คทันที
+  schedule();
 })();
 
 /* ---------- Tier 2: ดึงข้อมูลสด + checklist 6 ขั้น ---------- */
