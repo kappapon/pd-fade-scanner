@@ -51,6 +51,9 @@ th.sortable:hover{color:#c9d1d9}
 .now.inzone{color:#3fb950;font-weight:600}
 .now.above{color:#d29922}
 #livets{color:#484f58}
+#refreshBtn{background:#161b22;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;
+font-size:12px;padding:2px 9px;cursor:pointer;margin-left:8px}
+#refreshBtn:disabled{opacity:.45;cursor:default}
 .wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media (max-width:700px){
   body{padding:6px;font-size:13px}
@@ -67,12 +70,17 @@ th.sortable:hover{color:#c9d1d9}
   tr.row td:nth-child(n+6):nth-child(-n+8){display:none}
   td.now .px{display:none}           /* จอแคบ: เหลือแค่ % ระยะจากเส้น (ราคาเต็มดูใน title/รายละเอียด) */
   .frow select{max-width:80px}       /* กันตัวเลือกภาษาไทยดันคอลัมน์ให้กว้างเกิน */
+  /* จอแคบ: ปุ่มรีเฟรชลอยมุมล่างขวา — กดถึงด้วยนิ้วโป้งตอนเลื่อนดูตารางยาว ๆ */
+  #refreshBtn{position:fixed;right:14px;bottom:16px;z-index:5;width:48px;height:48px;
+  border-radius:24px;font-size:19px;padding:0;margin:0;background:#238636;color:#fff;
+  border:1px solid #2ea043}
 }
 </style></head><body>
 <h1>🔻 PD Fade Scanner — Tier 1
 <button id="rescan" style="display:none;float:right;background:#238636;color:#fff;border:0;
 border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer">🔄 Scan ใหม่</button></h1>
-<div class="meta"><span id="meta"></span><span id="livets"></span></div>
+<div class="meta"><span id="meta"></span><span id="livets"></span>
+<button id="refreshBtn" title="รีเฟรชราคาสดทันที + เช็คว่ามีข้อมูลสแกนรอบใหม่ไหม">🔄</button></div>
 <details class="panel"><summary>📋 วิธีใช้ + เกรด EDGE (อิงผลทดสอบย้อนหลัง 18 เดือน)</summary>
 <div class="pbody">
 <b>คอมโบเข้าเทรด:</b> ① เจอเหรียญ pump แล้วหลุดบันได fib →
@@ -230,6 +238,21 @@ async function refreshLive(){
   }
 }
 refreshLive(); setInterval(refreshLive, 60000);
+
+/* ปุ่มรีเฟรช: ราคาสดทันที + เช็คว่ามีสแกนรอบใหม่ไหม (ถ้ามี = โหลดหน้าใหม่) */
+document.getElementById('refreshBtn').onclick = async function(){
+  this.disabled = true; const old = this.textContent; this.textContent = '⏳';
+  await refreshLive();
+  if(location.protocol.startsWith('http')){
+    try{
+      const html = await (await fetch(location.pathname + '?_=' + Date.now(),
+                                      {cache:'no-store'})).text();
+      const m = html.match(/"generated_utc":\s*"([^"]+)"/);
+      if(m && m[1] !== DATA.generated_utc){ this.textContent='✅'; location.reload(); return; }
+    }catch(e){ /* ออฟไลน์ — ราคาสดก็รีเฟรชไปแล้ว */ }
+  }
+  this.textContent = old; this.disabled = false;
+};
 
 /* ---------- ตัวกรอง + เรียงลำดับ ---------- */
 const F = id => document.getElementById(id);
