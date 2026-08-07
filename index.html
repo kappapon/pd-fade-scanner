@@ -562,22 +562,15 @@ function triggerCheck(h4,level){
   const engulf=near&&b.c<b.o&&p&&p.c>p.o&&b.o>=p.c&&b.c<=p.o;
   return {pin,engulf,found:pin||engulf};
 }
-async function loadTier2(o,el){
-  el.textContent='⏳ กำลังดึงข้อมูลสดจาก Binance + คำนวณ checklist 6 ขั้น …';
-  const err=await ensureT2(o);
-  if(err){
-    el.innerHTML=`โหลด Tier 2 ไม่สำเร็จ (${err}) — ถ้าเปิดแบบ file:// แล้ว browser บล็อก ลอง: <code>python3 -m http.server</code> แล้วเปิด http://localhost:8000/dashboard.html`;
-    return;
-  }
-  el.innerHTML=tier2Html(o.r,o.t2);
-}
-
-/* ---------- บริบท volume ตอน retest (iter10) — โชว์เฉพาะรายการโปรด ----------
-   v3 = mean(vol ขาเด้ง) / mean(vol ขาพัง)  โดย j = แท่งแรกที่ปิดใต้เส้นหลังยอด, m = ก้นหลังจากนั้น
+/* ---------- บริบท volume ตอน retest (iter10) ----------
+   v3 = mean(vol ขาเด้ง) / mean(vol ขาพัง)  โดย j = แท่งที่ปิดข้ามลงใต้เส้นหลังยอด, m = ก้นหลังจากนั้น
    สถิติ 18 เดือน n=6,210 (ml/volume_study.txt): v3≥1.66 → ex-Q1'26 +0.096R เทียบส่วนที่เหลือ,
    ผ่านด่าน G1-G6 และไม่ใช่ delay ปลอมตัว (คุม delay แคบยังช่วย 5/6 ช่วง)
    ⚠️ post-hoc — threshold เลือกหลังเห็นข้อมูล ยังไม่ผ่าน forward test = ใช้ประกอบการตัดสินใจเท่านั้น
-   ⚠️ ทิศกลับกับตำรา: "bounce volume แห้ง" แย่กว่า ไม่ใช่ดีกว่า สำหรับ fade หลังพัมพ์ */
+   ⚠️ ทิศกลับกับตำรา: "bounce volume แห้ง" แย่กว่า ไม่ใช่ดีกว่า สำหรับ fade หลังพัมพ์
+   ⚠️ อยู่ในช่วงที่ ml/features.py:_extract_js() ตัดไปเทียบ parity โดยตั้งใจ (ml/vchip.py ใช้ port
+      ฝั่ง Python บันทึกสถิติ — ถ้าสองฝั่งเพี้ยนกันเงียบ ๆ ข้อมูลที่เก็บจะใช้ไม่ได้ทั้งชุด)
+      → แก้สูตรที่นี่ ต้องแก้ features.vol_ctx() ด้วยเสมอ แล้วรัน --parity */
 const VOL_WIN=60;   // = FILL_WIN ของ label.py — สถิติวัดเฉพาะไม้ที่เข้าภายใน 60 แท่งหลัง breakdown
 function volCtx(h4, level, hiMs){
   const last=h4.length-1;
@@ -600,6 +593,16 @@ function volCtx(h4, level, hiMs){
   if(ds<=0) return {j,m,v3:null};
   return {j,m,bars:bn,v3:(bs/bn)/(ds/dn)};
 }
+async function loadTier2(o,el){
+  el.textContent='⏳ กำลังดึงข้อมูลสดจาก Binance + คำนวณ checklist 6 ขั้น …';
+  const err=await ensureT2(o);
+  if(err){
+    el.innerHTML=`โหลด Tier 2 ไม่สำเร็จ (${err}) — ถ้าเปิดแบบ file:// แล้ว browser บล็อก ลอง: <code>python3 -m http.server</code> แล้วเปิด http://localhost:8000/dashboard.html`;
+    return;
+  }
+  el.innerHTML=tier2Html(o.r,o.t2);
+}
+/* ส่วนแสดงผลของชิป V — อยู่นอก parity slice เพราะอ้าง FAV (global ของเบราว์เซอร์) */
 function volState(vc){
   if(!vc||vc.stale) return 'none';
   if(vc.v3==null) return 'wait';
