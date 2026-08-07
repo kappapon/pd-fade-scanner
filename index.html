@@ -61,6 +61,8 @@ font-size:10px;font-weight:600;text-align:center;opacity:.75;vertical-align:midd
 .ck.ban{background:#da3633;color:#fff}
 .ck.wait{background:#30363d;color:#8b949e}
 .ck.none{background:#161b22;color:#30363d}
+/* ชิป volume (iter10) — เฉพาะรายการโปรด, ขอบซ้ายคั่นให้เห็นว่าไม่ใช่ขั้นที่ 7 ของ checklist */
+.ck.vol{margin-left:6px;border-left:2px solid #6e7681}
 .tabs{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 8px}
 .tab{background:#161b22;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;
 font-size:12px;padding:4px 12px;cursor:pointer}
@@ -72,6 +74,11 @@ font-size:12px;padding:4px 12px;cursor:pointer}
 .panel .pbody{padding:2px 14px 12px;font-size:12px;color:#adbac7;line-height:1.8}
 .panel .pbody b{color:#c9d1d9}
 .t2 .synth{font-size:13px;font-weight:600;margin:2px 0 8px;padding:6px 9px;border-radius:6px;background:#161b22}
+.t2 .volctx{font-size:12px;margin:8px 0 0;padding:6px 9px;border-radius:6px;background:#161b22;
+border-left:3px solid #6e7681}
+.t2 .volctx.ok{border-left-color:#1a7f37} .t2 .volctx.no{border-left-color:#da3633}
+.t2 .volctx.part{border-left-color:#9e6a03}
+.t2 .volctx .cav{color:#8b949e;font-size:11px;display:block;margin-top:3px}
 .now{color:#8b949e}
 .now.inzone{color:#3fb950;font-weight:600}
 .now.above{color:#d29922}
@@ -387,6 +394,9 @@ function toggleFav(o){
   if(FAV.has(s)) FAV.delete(s); else FAV.add(s);
   favSave(); paintStar(o); paintTabs(); applyFilters();
   if(FAV.has(s) && favOnly) ensureT2(o);
+  // ชิป V + บล็อก volume ผูกกับสถานะรายการโปรด → วาดใหม่ทันทีถ้า Tier 2 คำนวณไว้แล้ว
+  if(o.t2){ paintStrip(o);
+    if(o.det.dataset.loaded) o.det.querySelector('.t2').innerHTML=tier2Html(o.r,o.t2); }
 }
 F('tabAll').onclick=()=>setTab(false);
 F('tabFav').onclick=()=>setTab(true);
@@ -562,6 +572,60 @@ async function loadTier2(o,el){
   el.innerHTML=tier2Html(o.r,o.t2);
 }
 
+/* ---------- บริบท volume ตอน retest (iter10) — โชว์เฉพาะรายการโปรด ----------
+   v3 = mean(vol ขาเด้ง) / mean(vol ขาพัง)  โดย j = แท่งแรกที่ปิดใต้เส้นหลังยอด, m = ก้นหลังจากนั้น
+   สถิติ 18 เดือน n=6,210 (ml/volume_study.txt): v3≥1.66 → ex-Q1'26 +0.096R เทียบส่วนที่เหลือ,
+   ผ่านด่าน G1-G6 และไม่ใช่ delay ปลอมตัว (คุม delay แคบยังช่วย 5/6 ช่วง)
+   ⚠️ post-hoc — threshold เลือกหลังเห็นข้อมูล ยังไม่ผ่าน forward test = ใช้ประกอบการตัดสินใจเท่านั้น
+   ⚠️ ทิศกลับกับตำรา: "bounce volume แห้ง" แย่กว่า ไม่ใช่ดีกว่า สำหรับ fade หลังพัมพ์ */
+const VOL_WIN=60;   // = FILL_WIN ของ label.py — สถิติวัดเฉพาะไม้ที่เข้าภายใน 60 แท่งหลัง breakdown
+function volCtx(h4, level, hiMs){
+  const last=h4.length-1;
+  /* j ต้องเป็นแท่งที่ "ปิดข้ามลง" ใต้เส้น (c<level แต่แท่งก่อนหน้า c>=level) — ไม่ใช่แค่แท่งแรก
+     ที่บังเอิญอยู่ใต้เส้น มิฉะนั้นถ้า breakdown เก่ากว่าหน้าต่าง 200 แท่ง จะได้ j=0 แล้ว
+     "ขาเด้ง" กลายเป็นทั้งเดือน (backtest มี median 6 แท่ง) = คนละอย่างกับที่วัดมา */
+  let j=-1;
+  for(let i=1;i<=last;i++){
+    if(h4[i].t>=hiMs && h4[i].c<level && h4[i-1].c>=level){ j=i; break; }
+  }
+  if(j<0) return {stale:'nocross'};                 // breakdown เก่ากว่าหน้าต่างที่ดึงมา
+  if(last-j>VOL_WIN) return {stale:'old', j, age:last-j};
+  let m=j;
+  for(let i=j;i<=last;i++) if(h4[i].l<h4[m].l) m=i;
+  if(m>=last) return {j,m,v3:null};                 // ก้นคือแท่งล่าสุด = ยังไม่มีขาเด้งให้วัด
+  let ds=0,bs=0;
+  for(let i=j;i<=m;i++) ds+=h4[i].v;
+  for(let i=m+1;i<=last;i++) bs+=h4[i].v;
+  const dn=m-j+1, bn=last-m;
+  if(ds<=0) return {j,m,v3:null};
+  return {j,m,bars:bn,v3:(bs/bn)/(ds/dn)};
+}
+function volState(vc){
+  if(!vc||vc.stale) return 'none';
+  if(vc.v3==null) return 'wait';
+  return vc.v3>=1.66?'ok':(vc.v3>=1.0?'part':'no');
+}
+const VOL_TXT={
+  ok:'ขาเด้ง volume <b>หนากว่า</b>ขาพัง — มีคนขายจริงที่แนวนี้ (กลุ่มที่สถิติดีที่สุด)',
+  part:'ขาเด้ง volume พอ ๆ กับขาพัง — ก้ำกึ่ง',
+  no:'ขาเด้ง volume <b>บางกว่า</b>ขาพัง — กลุ่มนี้สถิติ 18 เดือนแย่กว่า (สวนกับตำรา)',
+  wait:'ยังไม่มีขาเด้งให้วัด (ก้นคือแท่งล่าสุด)',
+  none:'อยู่นอกหน้าต่างที่สถิติวัดไว้ — ไม่แสดงตัวเลขดีกว่าแสดงเลขที่ใช้ไม่ได้',
+};
+function volHtml(r,c){
+  if(!FAV.has(r.symbol)) return '';                 // ใช้เฉพาะรายการโปรดตามที่ตั้งใจ
+  const vc=c.vol, s=volState(vc);
+  if(vc&&vc.stale){
+    const why = vc.stale==='old'
+      ? `breakdown ผ่านมาแล้ว ${vc.age} แท่ง 4H (เกิน ${VOL_WIN} แท่งที่สถิติวัดไว้)`
+      : 'หาจุดที่ปิดข้ามลงใต้เส้นในหน้าต่าง 200 แท่งไม่เจอ (breakdown เก่ากว่านั้น)';
+    return `<div class="volctx">📊 <b>Volume ขาเด้ง</b> — ไม่วัด: ${why}<span class="cav">${VOL_TXT.none}</span></div>`;
+  }
+  const num = !vc||vc.v3==null?'' : ` <b>${vc.v3.toFixed(2)}×</b> (ขาเด้ง ${vc.bars} แท่ง)`;
+  return `<div class="volctx ${s}">📊 <b>Volume ขาเด้ง</b>${num} — ${VOL_TXT[s]}
+    <span class="cav">iter10 · post-hoc ยังไม่ผ่าน forward test · ประกอบการตัดสินใจเท่านั้น ไม่ใช่สัญญาณเข้า</span></div>`;
+}
+
 /* ---------- Tier 2 แยกเป็น 3 ส่วน: คำนวณ (pure) / ตารางในแถบรายละเอียด / แถบไอคอนในแถว ----------
    ⚠️ สูตรทั้งหมดยกมาจากของเดิมทั้งดุ้น ไม่แก้เลขแม้แต่ตัวเดียว — ml/features.py port ไว้ฝั่ง Python
    และมี `python3 ml/features.py --parity` คุมอยู่ ห้ามแก้ฝั่งเดียว
@@ -573,8 +637,10 @@ function tier2Compute(r,d1,h4){
   const cl=d1.map(b=>b.c),last=h4[h4.length-1].c;
   const rv=rsi14(cl),e20=emaLast(cl,20),e50=emaLast(cl,50),mb=macdBear(cl);
   const a1=adx14(d1),a4=adx14(h4);
-  const st=structureCheck(d1,r.hi,d1.filter(b=>b.h>=r.hi*0.999)[0]?.t??d1[0].t);
+  const hiMs=d1.filter(b=>b.h>=r.hi*0.999)[0]?.t??d1[0].t;
+  const st=structureCheck(d1,r.hi,hiMs);
   const trig=triggerCheck(h4,r.level);
+  const vol=volCtx(h4,r.level,hiMs);
   const rel=(last-r.level)/r.level;
   const zone=Math.abs(rel)<=0.02?'in':(rel<0?'below':'above');
   const emaBear=last<e20, rsiMacd=rv<50&&mb;
@@ -585,7 +651,7 @@ function tier2Compute(r,d1,h4){
   const steps=[chipS(structN===3,structN===2), chipS(confN>=2,confN===1),
                train?'ban':chipS(a4.adx>=25&&a4.ndi>a4.pdi,a4.adx<25),
                zone==='in'?'ok':'wait', trig.found?'ok':'no', 'ok'];
-  return {last,rv,e20,mb,a1,a4,st,trig,rel,zone,emaBear,rsiMacd,confN,structN,train,steps,
+  return {last,rv,e20,mb,a1,a4,st,trig,rel,zone,emaBear,rsiMacd,confN,structN,train,steps,vol,
           ready:trig.found&&zone==='in', at:new Date().toLocaleTimeString('th-TH')};
 }
 function tier2Html(r,c){
@@ -626,13 +692,19 @@ function tier2Html(r,c){
       <div class="synth">${synth}</div>
       <table>${rows.map(x=>`<tr><td>${x[1]}</td><td><b>${x[0]}</b></td><td>${x[2]}</td></tr>`).join('')}</table>
       <div class="vd">${verdict}</div>
+      ${volHtml(r,c)}
       <div class="note" style="color:#8b949e">ค่า auto จากแท่งปิดแล้วเท่านั้น — ผู้ใช้ตัดสินใจเองเสมอ · ไม่ใช่คำแนะนำการลงทุน</div>`;
 }
 function paintStrip(o){
   const c=o.t2; if(!c) return;
   o.strip.className='ckstrip done';
-  o.strip.innerHTML=c.steps.map((s,i)=>
+  let html=c.steps.map((s,i)=>
     `<span class="ck ${s}" title="${i+1}. ${CK_NAME[i]} — ${CK_STATE[s]}">${i+1}</span>`).join('');
+  if(FAV.has(o.r.symbol)){                 // ชิป volume เฉพาะรายการโปรด — ไม่ใช่ขั้นของ checklist
+    const s=volState(c.vol), v=c.vol&&c.vol.v3!=null?c.vol.v3.toFixed(2)+'× ':'';
+    html+=`<span class="ck vol ${s}" title="Volume ขาเด้ง ${v}— ${VOL_TXT[s].replace(/<\/?b>/g,'')}">V</span>`;
+  }
+  o.strip.innerHTML=html;
 }
 /* ยิง fetch ครั้งเดียวต่อเหรียญแล้ว cache บน rowRef — เก็บ promise ไว้ด้วย เผื่อผู้ใช้แตะแถว
    ระหว่างที่ batch กำลังดึงตัวเดียวกันอยู่ จะได้รอ promise เดิมแทนการยิงซ้ำ
