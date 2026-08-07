@@ -608,15 +608,23 @@ function volState(vc){
   if(vc.v3==null) return 'wait';
   return vc.v3>=1.66?'ok':(vc.v3>=1.0?'part':'no');
 }
+/* ⚠️ ชิป V ขึ้นเฉพาะตอนมี trigger 4H ด้วย — iter11b พบว่าสองอย่างนี้ใช้เดี่ยว ๆ ไม่ได้เลย
+   (trigger เดี่ยว +0.106R แย่กว่าไม่มี trigger +0.139R · V เดี่ยวในกลุ่มไม่มี trigger เพิ่ม −0.029R)
+   แต่รวมกันได้ +0.680R — โชว์ V ตอนไม่มี trigger จึงชวนให้อ่านเจอสัญญาณที่สถิติไม่รองรับ */
 const VOL_TXT={
-  ok:'ขาเด้ง volume <b>หนากว่า</b>ขาพัง — มีคนขายจริงที่แนวนี้ (กลุ่มที่สถิติดีที่สุด)',
-  part:'ขาเด้ง volume พอ ๆ กับขาพัง — ก้ำกึ่ง',
-  no:'ขาเด้ง volume <b>บางกว่า</b>ขาพัง — กลุ่มนี้สถิติ 18 เดือนแย่กว่า (สวนกับตำรา)',
+  ok:'ขาเด้ง volume <b>หนากว่า</b>ขาพัง — trigger + volume หนา = กลุ่มที่สถิติดีที่สุด '
+     +'(+0.68R · ตลาดปกติ +0.26R · n=144)',
+  part:'ขาเด้ง volume พอ ๆ กับขาพัง — ยังไม่เข้ากลุ่มที่ดี (นับรวมกับกลุ่ม volume บาง)',
+  no:'ขาเด้ง volume <b>บางกว่า</b>ขาพัง — trigger ที่ volume บางคือกลุ่มที่สถิติแบน/ติดลบ '
+     +'(+0.01R · ตลาดปกติ −0.18R · n=832) สวนกับตำรา',
   wait:'ยังไม่มีขาเด้งให้วัด (ก้นคือแท่งล่าสุด)',
   none:'อยู่นอกหน้าต่างที่สถิติวัดไว้ — ไม่แสดงตัวเลขดีกว่าแสดงเลขที่ใช้ไม่ได้',
 };
+const VOL_CAV='iter11b · post-hoc · ตลาดปกติ CI ยังคร่อม 0 (n=93) และเกิดแค่ ~8 สัญญาณ/เดือน'
+            + ' — ใช้คัดของ trigger เท่านั้น ไม่ใช่สัญญาณเข้าเอง';
 function volHtml(r,c){
   if(!FAV.has(r.symbol)) return '';                 // ใช้เฉพาะรายการโปรดตามที่ตั้งใจ
+  if(!c.trig.found) return '';                      // ไม่มี trigger 4H = V ไม่มีความหมาย (iter11b)
   const vc=c.vol, s=volState(vc);
   if(vc&&vc.stale){
     const why = vc.stale==='old'
@@ -626,7 +634,7 @@ function volHtml(r,c){
   }
   const num = !vc||vc.v3==null?'' : ` <b>${vc.v3.toFixed(2)}×</b> (ขาเด้ง ${vc.bars} แท่ง)`;
   return `<div class="volctx ${s}">📊 <b>Volume ขาเด้ง</b>${num} — ${VOL_TXT[s]}
-    <span class="cav">iter10 · post-hoc ยังไม่ผ่าน forward test · ประกอบการตัดสินใจเท่านั้น ไม่ใช่สัญญาณเข้า</span></div>`;
+    <span class="cav">${VOL_CAV}</span></div>`;
 }
 
 /* ---------- Tier 2 แยกเป็น 3 ส่วน: คำนวณ (pure) / ตารางในแถบรายละเอียด / แถบไอคอนในแถว ----------
@@ -703,9 +711,11 @@ function paintStrip(o){
   o.strip.className='ckstrip done';
   let html=c.steps.map((s,i)=>
     `<span class="ck ${s}" title="${i+1}. ${CK_NAME[i]} — ${CK_STATE[s]}">${i+1}</span>`).join('');
-  if(FAV.has(o.r.symbol)){                 // ชิป volume เฉพาะรายการโปรด — ไม่ใช่ขั้นของ checklist
+  // ชิป V: เฉพาะรายการโปรด **และ** ต้องมี trigger 4H ด้วย (iter11b — เดี่ยว ๆ ไม่มีความหมาย)
+  if(FAV.has(o.r.symbol) && c.trig.found){
     const s=volState(c.vol), v=c.vol&&c.vol.v3!=null?c.vol.v3.toFixed(2)+'× ':'';
-    html+=`<span class="ck vol ${s}" title="Volume ขาเด้ง ${v}— ${VOL_TXT[s].replace(/<\/?b>/g,'')}">V</span>`;
+    html+=`<span class="ck vol ${s}" title="trigger 4H + Volume ขาเด้ง ${v}— `
+        + `${VOL_TXT[s].replace(/<\/?b>/g,'')}">V</span>`;
   }
   o.strip.innerHTML=html;
 }
